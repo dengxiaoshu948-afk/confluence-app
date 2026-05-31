@@ -1,0 +1,125 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: temurin
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: 8.11.1
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web
+        run: npm run build
+
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      - name: Replace app icons
+        run: |
+          echo "=== Replacing default Android icons with custom icon ==="
+          
+          # 1. Remove the adaptive icon directory that overrides PNGs
+          rm -rf android/app/src/main/res/mipmap-anydpi-v26
+          echo "Removed mipmap-anydpi-v26"
+          
+          # 2. Remove default XML drawable icons
+          rm -f android/app/src/main/res/drawable/ic_launcher_background.xml
+          rm -f android/app/src/main/res/drawable/ic_launcher_foreground.xml
+          rm -f android/app/src/main/res/drawable-v24/ic_launcher_background.xml
+          rm -f android/app/src/main/res/drawable-v24/ic_launcher_foreground.xml
+          rm -f android/app/src/main/res/values/ic_launcher_background.xml
+          echo "Removed XML icon resources"
+          
+          # 3. Copy our custom icons to each mipmap density
+          for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            target_dir="android/app/src/main/res/mipmap-${density}"
+            mkdir -p "$target_dir"
+            
+            # Remove existing ic_launcher files
+            rm -f "$target_dir"/ic_launcher.*
+            
+            # Copy our PNG icon
+            cp "assets/icons/icon-${density}.png" "$target_dir/ic_launcher.png"
+            echo "  Copied icon to mipmap-${density}/ic_launcher.png"
+          done
+          
+          echo "=== Final icon files ==="
+          find android/app/src/main/res -name "ic_launcher*" -type f | sort
+
+      - name: Update Android appName
+        run: |
+          # Update strings.xml app_name
+          sed -i 's/Confluence AI Hub/Confluence/g' android/app/src/main/res/values/strings.xml || true
+          echo "Updated appName in strings.xml"
+          cat android/app/src/main/res/values/strings.xml
+
+      - name: Update version
+        run: |
+          # Update versionName and versionCode in build.gradle
+          sed -i 's/versionName "[^"]*"/versionName "0.6.1"/g' android/app/build.gradle
+          sed -i 's/versionCode [0-9]*/versionCode 7/g' android/app/build.gradle
+          echo "Updated version to 0.6.1 (code 7)"
+          grep -E "versionName|versionCode" android/app/build.gradle
+
+      - name: Build APK
+        working-directory: android
+        run: gradle assembleDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: confluence-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Create Release
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        continue-on-error: true
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v0.6.1
+          name: Confluence v0.6.1
+          body: |
+            Confluence - Android APK v0.6.1
+            
+            ### 更新内容
+            - 全新深蓝科技流光APP图标
+            - 应用名称缩短为 Confluence
+            - 添加退出登录功能
+            - 修复下载功能（APP WebView兼容）
+            - 修复大文件上传（分片阈值降至10MB）
+            - 修复积分归属问题
+            - 底部导航栏更宽更均匀
+            - 增强日月切换光效
+            
+            ### 安装说明
+            1. 下载 APK 文件
+            2. 在 Android 手机上允许"安装未知来源应用"
+            3. 点击 APK 安装
+          files: android/app/build/outputs/apk/debug/app-debug.apk
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
