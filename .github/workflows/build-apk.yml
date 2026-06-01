@@ -30,10 +30,13 @@ jobs:
           gradle-version: 8.11.1
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Build web
         run: npm run build
+
+      - name: Add Android platform
+        run: npx cap add android
 
       - name: Sync Capacitor
         run: npx cap sync android
@@ -80,9 +83,9 @@ jobs:
       - name: Update version
         run: |
           # Update versionName and versionCode in build.gradle
-          sed -i 's/versionName "[^"]*"/versionName "0.6.1"/g' android/app/build.gradle
-          sed -i 's/versionCode [0-9]*/versionCode 7/g' android/app/build.gradle
-          echo "Updated version to 0.6.1 (code 7)"
+          sed -i 's/versionName "[^"]*"/versionName "1.0.1"/g' android/app/build.gradle
+          sed -i 's/versionCode [0-9]*/versionCode 10/g' android/app/build.gradle
+          echo "Updated version to 1.0.1 (code 10)"
           grep -E "versionName|versionCode" android/app/build.gradle
 
       - name: Build APK
